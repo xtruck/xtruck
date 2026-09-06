@@ -119,24 +119,64 @@ window.acknowledgeOfflineManualBanner = acknowledgeOfflineManualBanner;
 // bannière puis se reconnecter (le seul moment où elle pourrait
 // réapparaître) redemande légitimement l'attention de l'opérateur si le
 // problème persiste toujours.
-export function setAiDegradedStatus(aiLoadErrors) {
+// AJOUT (audit — bannière IA jamais mise à jour par les échecs d'EXÉCUTION) :
+// setAiDegradedStatus() ne reflétait que l'instantané de démarrage
+// (aiLoadErrors, un message 'init' par connexion) — un module qui échoue en
+// PLEIN CULTE (ex. semanticDetector rate-limited par Groq, voir
+// server.js#wireAiModuleErrorBroadcast et son diffuseur 'aiModuleError',
+// déjà lu ci-dessous côté toast/activité mais jamais côté bannière) ne
+// touchait jamais #aiDegradedBanner — seul un toast throttlé (30s) et une
+// ligne d'activité le signalaient, tous deux éphémères. runtimeAiErrors
+// fusionne maintenant les deux sources dans la même bannière persistante.
+let startupAiLoadErrors = [];
+const runtimeAiErrors = new Map(); // module -> dernier message d'échec d'exécution
+let aiDegradedBannerDismissed = false;
+
+function renderAiDegradedBanner() {
   const banner = document.getElementById('aiDegradedBanner');
   const msg = document.getElementById('aiDegradedMessage');
   if (!banner || !msg) return;
 
-  if (!Array.isArray(aiLoadErrors) || aiLoadErrors.length === 0) {
+  const messages = [
+    ...startupAiLoadErrors,
+    ...Array.from(runtimeAiErrors, ([moduleName, message]) => `${moduleName} : ${message}`),
+  ];
+
+  if (messages.length === 0) {
     banner.style.display = 'none';
+    aiDegradedBannerDismissed = false;
     return;
   }
 
   msg.textContent =
-    aiLoadErrors.length === 1
-      ? `Fonctionnalité IA en mode limité : ${aiLoadErrors[0]}`
-      : `${aiLoadErrors.length} fonctionnalités IA en mode limité : ${aiLoadErrors.join(' · ')}`;
-  banner.style.display = 'flex';
+    messages.length === 1
+      ? `Fonctionnalité IA en mode limité : ${messages[0]}`
+      : `${messages.length} fonctionnalités IA en mode limité : ${messages.join(' · ')}`;
+  if (!aiDegradedBannerDismissed) banner.style.display = 'flex';
+}
+
+export function setAiDegradedStatus(aiLoadErrors) {
+  startupAiLoadErrors = Array.isArray(aiLoadErrors) ? aiLoadErrors : [];
+  aiDegradedBannerDismissed = false;
+  renderAiDegradedBanner();
+}
+
+// AJOUT (audit) : appelé depuis ws-dispatch.js, case 'aiModuleError' — un
+// message IDENTIQUE au précédent pour ce module (ex. rate-limited répété à
+// chaque énoncé pendant tout un culte) ne rouvre PAS une bannière déjà
+// fermée par l'opérateur, sinon elle serait de facto non-fermable tant que
+// la limite de débit persiste. Un module NOUVEAU ou un message qui change
+// (ex. passage de "rate-limited" à une vraie erreur API) redemande
+// légitimement l'attention, même après fermeture.
+export function recordAiModuleError(moduleName, message) {
+  const isNewOrChanged = runtimeAiErrors.get(moduleName) !== message;
+  runtimeAiErrors.set(moduleName, message);
+  if (isNewOrChanged) aiDegradedBannerDismissed = false;
+  renderAiDegradedBanner();
 }
 
 export function dismissAiDegradedBanner() {
+  aiDegradedBannerDismissed = true;
   const banner = document.getElementById('aiDegradedBanner');
   if (banner) banner.style.display = 'none';
 }

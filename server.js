@@ -827,12 +827,19 @@ const readingMode = new ReadingMode({
 // diffusée dans chaque showVerse en mode lecture pour que le tableau de
 // bord affiche la progression ("Jean 3 · verset 16/36") sans avoir à
 // recompter lui-même les versets du chapitre.
+// CORRECTIF (audit — progression trompeuse sur une plage annoncée) : `total`
+// valait toujours la longueur du chapitre entier, même quand une plage a été
+// annoncée et que le mode lecture s'arrête volontairement avant la fin (voir
+// endVerseNumber dans reading-mode.js) — le tableau de bord affichait par ex.
+// "verset 6/36" alors que la lecture s'arrêtera à 7, laissant croire à
+// l'opérateur qu'il reste 30 versets à suivre. `endVerseNumber` est déjà un
+// NUMÉRO de verset (pas un index), cohérent avec `verse` ci-dessous.
 function readingModePosition(rm, verseNum) {
   return {
     book: rm.book,
     chapter: rm.chapter,
     verse: verseNum,
-    total: rm.verses ? rm.verses.length : 0,
+    total: rm.endVerseNumber || (rm.verses ? rm.verses.length : 0),
   };
 }
 

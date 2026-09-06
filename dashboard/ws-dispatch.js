@@ -53,7 +53,12 @@ import { renderRundown, applyRundownActiveCue } from './features/rundown.js';
 import { renderNetworkStatus } from './features/network-settings.js';
 import { renderIpCameras, showCameraPairingQr } from './features/ip-cameras.js';
 import { renderBranding } from './features/branding.js';
-import { setTranscriptionHealth, setAiDegradedStatus } from './features/pipeline-health.js';
+import {
+  setTranscriptionHealth,
+  setAiDegradedStatus,
+  recordAiModuleError,
+} from './features/pipeline-health.js';
+import { loadOverlayThemeSelector } from './features/overlay-theme-selector.js';
 import {
   renderBibleTopics,
   renderBibleSearchResults,
@@ -145,6 +150,19 @@ export function handleMessage(message) {
       // server.js), jamais lu ici avant ce correctif — voir
       // setAiDegradedStatus() dans pipeline-health.js.
       setAiDegradedStatus(message.aiLoadErrors);
+      break;
+    // CORRECTIF (audit — coche de thème obsolète sur une 2e fenêtre tableau
+    // de bord) : overlay-theme-selector.js ne se ré-affichait qu'après un
+    // appel `selectOverlayTheme()` dans SA PROPRE fenêtre — un second
+    // tableau de bord ouvert (ou un changement de thème par ambiance/
+    // commande vocale, voir server.js) ne le rafraîchissait jamais, laissant
+    // une coche "✓" sur un thème qui n'est plus réellement actif.
+    // loadOverlayThemeSelector() re-questionne l'état réel (IPC
+    // list-themes/get-active-theme) — peu coûteux, appelé aussi pour les
+    // applyTheme d'ambiance qui ne changent pas le thème actif : sans
+    // conséquence, juste un re-rendu identique.
+    case 'applyTheme':
+      loadOverlayThemeSelector();
       break;
     case 'translationChanged':
       updateActiveTranslationButton(message.language, message.code);
@@ -267,6 +285,13 @@ export function handleMessage(message) {
       if (shouldToastAiModuleError(message.module)) {
         showToast(`⚠️ Module IA « ${message.module} » en échec — repli automatique actif`, 'error');
       }
+      // CORRECTIF (audit — bannière IA jamais mise à jour par un échec
+      // d'exécution) : le toast/l'activité ci-dessus sont éphémères — un
+      // opérateur qui ne regarde pas l'écran au bon moment (ex.
+      // semanticDetector rate-limited pendant une longue prédication) n'en
+      // gardait aucune trace persistante. Même bannière que setAiDegradedStatus
+      // (case 'init'), voir recordAiModuleError() dans pipeline-health.js.
+      recordAiModuleError(message.module, message.message);
       break;
     // AJOUT (Partie 3.1 — reconnexion automatique OBS) : une coupure OBS en
     // plein culte ne doit jamais être silencieuse — visible dans le
