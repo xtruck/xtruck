@@ -32,7 +32,7 @@
     "security:fix": "npm audit fix"
   },
   "dependencies": {
-    "@google/genai": "^2.14.0",
+    "@google/genai": "^2.19.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "^12.11.1",
     "compression": "^1.8.1",
